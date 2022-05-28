@@ -43,19 +43,12 @@ function runCheckThrowApi(){
       } else initDegree = 0;
   }, 100)
 
-  fetch(codewarsUsersApi.replace('{user}', userName.value), {
-    method: 'post',
-    headers: {
-        'Accept': 'application/json, text/plain, */*',
-        'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({username: userName.value})
-    })
+  fetch(codewarsKatasApi.replace('{user}', userName.value))
     .then(res => res.json())
     .then(r => {
-
-        if (r.success) {
-            const completedKatas = r.completed.flat();
+        console.log(r);
+        if (r.totalItems > 0) {
+            const completedKatas = r.data.flat();
             const slugs = [...completedKatas.map(o => o.slug)];
             const ids = [...completedKatas.map(o => o.id)];
             const katas = {
@@ -238,7 +231,7 @@ function runCheck() {
 
                     document.querySelector('.total').textContent = `${checked.completed} / ${checked.required}`;
 
-                    return r;
+                    return true;
 
                 } else {
                     clearInterval(loaderInt);
