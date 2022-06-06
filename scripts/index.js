@@ -8,6 +8,7 @@ const submitForm = document.querySelector('input[type=submit]');
 const codewarsKatasApi = `https://www.codewars.com/api/v1/users/{user}/code-challenges/completed?`
 const codewarsUsersApi = 'https://www.codewars.com/api/v1/users/{user}'
 const codewarsChallengesApi = 'https://www.codewars.com/api/v1/code-challenges/{challenge}'
+const itemsPerPage = 200;
 tasksTextArea.value = localStorage.text || '';
 completedArea.innerHTML = localStorage.output || '';
 userName.value = localStorage.username || '';
@@ -26,7 +27,7 @@ submitForm.addEventListener('click', (ev) => {
 })
 
 
-function runCheckThrowApi() {
+async function runCheckThrowApi() {
   if (!userName.value || !tasksTextArea.value) {
     alert('Fill Username and Task fields!');
     return false;
@@ -44,80 +45,85 @@ function runCheckThrowApi() {
     } else initDegree = 0;
   }, 100)
 
-  fetch(codewarsKatasApi.replace('{user}', userName.value))
-    .then(res => res.json())
-    .then(r => {
-      console.log(r);
-      completedArea.innerHTML = '';
-      clearInterval(loaderInt);
-      if (r.totalItems >= 0) {
-        const completedKatas = r.data.flat().filter(o => o.completedLanguages.findIndex(lang => lang === "javascript") > -1);
-        const slugs = [...completedKatas.map(o => o.slug)];
-        const ids = [...completedKatas.map(o => o.id)];
-        const katas = {
-          slugs,
-          ids
-        }
 
-        const checked = checkKata(tasksTextArea.value, katas);
-        console.log(checked);
-        for (let i = 0; i < checked.tasksName.length; i++) {
-
-          const txt = `${i + 1}. ${checked.tasksName[i]}`;
-
-          const h4 = document.createElement('h4');
-          const a = document.createElement('a');
-          const pseudoAfter = document.createElement('p');
-
-          pseudoAfter.textContent = checked.checkedTasks[checked.tasksName[i]] ? 'Done!' : 'Not completed.';
-          h4.textContent = txt;
-          a.href = checked.tasksLinks[i];
-          a.setAttribute('target', '_blank')
-          checked.checkedTasks[checked.tasksName[i]] ? pseudoAfter.style.color = 'green' : pseudoAfter.style.color = 'red';
-
-
-          a.appendChild(h4);
-          a.appendChild(pseudoAfter);
-          completedArea.appendChild(a);
-          localStorage.setItem('output', `${completedArea.innerHTML}`)
-          localStorage.setItem('username', `${userName.value}`)
-
-          fetch(codewarsChallengesApi.replace('{challenge}', checked.tasksName[i]))
-            .then(res => res.json())
-            .then(ch => {
-              console.log(ch);
-              const name = ch.name ? ch.name : checked.tasksName[i];
-              const txt = `${i + 1}. ${name}`;
-              h4.textContent = txt;
-            })
-        }
-        document.querySelector('.total-kata').textContent = numberWithSep(r.totalItems, ' ');
-        document.querySelector('.total-kata').classList.remove('hidden');
-
-        fetch(codewarsUsersApi.replace('{user}', userName.value))
-          .then(res => res.json())
-          .then(u => {
-            console.log(u);
-            document.querySelector('h1').classList.add('hidden');
-
-            //document.querySelector('.user-image').src = u.avatar;
-            document.querySelector('.name').textContent = u.name;
-            document.querySelector('.user-name').textContent = `@${u.username}`;
-
-            document.querySelector('.rank').textContent = u.ranks.overall.name;
-            document.querySelector('.rank').classList.remove('hidden');
-            document.querySelector('.honor').textContent = numberWithSep(u.honor, ' ');
-            document.querySelector('.honor').classList.remove('hidden');
-            document.querySelector('.leader-position').textContent = `№ ${numberWithSep(u.leaderboardPosition, ' ')}`;
-            document.querySelector('.leader-position').classList.remove('hidden');
-
-
-            document.querySelector('.total').textContent = `${checked.completed} / ${checked.required}`;
-          })
-
+  const userResp = await fetch(codewarsUsersApi.replace('{user}', userName.value));
+  const userJson = await userResp.json();
+  completedArea.innerHTML = '';
+  clearInterval(loaderInt);
+  if (userJson.codeChallenges) {
+    const pagesCount = Math.ceil(userJson.codeChallenges.totalCompleted / itemsPerPage);
+    const urls = [...Array(pagesCount).keys()].map(x => `${codewarsKatasApi.replace('{user}', userName.value)}page=${x}`);
+    const pages = await Promise.all(urls.map(async url => {
+      const response = await fetch(url);
+      return response.json();
+    }));
+    const katasList = pages.reduce((acc, page) => {
+      for (const item of page.data) {
+        acc.push(item);
       }
-    })
+      return acc;
+    }, []);
 
+    const completedKatas = katasList.filter(o => o.completedLanguages.findIndex(lang => lang === 'javascript') > -1);
+    const slugs = completedKatas.map(o => o.slug);
+    const ids = completedKatas.map(o => o.id);
+    const katas = {
+      slugs,
+      ids
+    }
+    const checked = checkKata(tasksTextArea.value, katas);
+
+    for (let i = 0; i < checked.tasksName.length; i++) {
+
+      const txt = `${i + 1}. ${checked.tasksName[i]}`;
+
+      const h4 = document.createElement('h4');
+      const a = document.createElement('a');
+      const pseudoAfter = document.createElement('p');
+
+      pseudoAfter.textContent = checked.checkedTasks[checked.tasksName[i]] ? 'Done!' : 'Not completed.';
+      h4.textContent = txt;
+      a.href = checked.tasksLinks[i];
+      a.setAttribute('target', '_blank')
+      checked.checkedTasks[checked.tasksName[i]] ? pseudoAfter.style.color = 'green' : pseudoAfter.style.color = 'red';
+
+
+      a.appendChild(h4);
+      a.appendChild(pseudoAfter);
+      completedArea.appendChild(a);
+      localStorage.setItem('output', `${completedArea.innerHTML}`)
+      localStorage.setItem('username', `${userName.value}`)
+
+      fetch(codewarsChallengesApi.replace('{challenge}', checked.tasksName[i]))
+        .then(res => res.json())
+        .then(ch => {
+          const name = ch.name ? ch.name : checked.tasksName[i];
+          const txt = `${i + 1}. ${name}`;
+          h4.textContent = txt;
+        })
+    }
+    document.querySelector('.total-kata').textContent = numberWithSep(katasList.length, ' ');
+    document.querySelector('.total-kata').classList.remove('hidden');
+    fetch(codewarsUsersApi.replace('{user}', userName.value))
+      .then(res => res.json())
+      .then(u => {
+        document.querySelector('h1').classList.add('hidden');
+
+        //document.querySelector('.user-image').src = u.avatar;
+        document.querySelector('.name').textContent = u.name;
+        document.querySelector('.user-name').textContent = `@${u.username}`;
+
+        document.querySelector('.rank').textContent = u.ranks.overall.name;
+        document.querySelector('.rank').classList.remove('hidden');
+        document.querySelector('.honor').textContent = numberWithSep(u.honor, ' ');
+        document.querySelector('.honor').classList.remove('hidden');
+        document.querySelector('.leader-position').textContent = `№ ${numberWithSep(u.leaderboardPosition, ' ')}`;
+        document.querySelector('.leader-position').classList.remove('hidden');
+
+
+        document.querySelector('.total').textContent = `${checked.completed} / ${checked.required}`;
+      })
+  }
   return true;
 
 }
